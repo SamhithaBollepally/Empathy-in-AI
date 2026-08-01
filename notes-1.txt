@@ -1,0 +1,60 @@
+
+- Used only train and test files.
+- target_contexts:
+    ['afraid', 'angry', 'anxious', 'devastated', 
+    'lonely', 'sad', 'terrified', 'furious', 'grateful', 'hopeful', 'faithful']
+
+- Unique prompts per context: Extracted 100 from each context
+    afraid: 652 (2,674 rows)
+    angry: 712 (2,921 rows)
+    anxious: 649 (2,627 rows)
+    devastated: 574 (2,340 rows)
+    lonely: 660 (2,674 rows)
+    sad: 693 (2,829 rows)
+    terrified: 638 (2,642 rows)
+    furious: 607 (2,547 rows)
+    grateful: 676 (2,708 rows)
+    hopeful: 640 (2,579 rows)
+    faithful: 373 (1,552 rows)
+
+Model: "meta-llama/Llama-3.2-3B"
+No.of layers: 1 embedding layer + 28 hidden layers
+
+    Original: afraid: Layer 6 (accuracy: 0.4500)
+    Original: angry: Layer 5 (accuracy: 0.5500)
+    Original: anxious: Layer 9 (accuracy: 0.8500)
+    Original: devastated: Layer 8 (accuracy: 0.6500)
+    Original: lonely: Layer 4 (accuracy: 0.7500)
+    Original: sad: Layer 7 (accuracy: 0.6000)
+    Original: terrified: Layer 1 (accuracy: 0.5500)
+    Original: furious: Layer 7 (accuracy: 0.5000)
+    Original: grateful: Layer 15 (accuracy: 0.9500)
+    Original: hopeful: Layer 12 (accuracy: 0.9500)
+    Original: faithful: Layer 5 (accuracy: 0.7000)
+    Shuffled:afraid: Layer 5 (accuracy: 0.2500)
+    Shuffled:angry: Layer 19 (accuracy: 0.2000)
+    Shuffled:anxious: Layer 2 (accuracy: 0.3500)
+    Shuffled:devastated: Layer 5 (accuracy: 0.3500)
+    Shuffled:lonely: Layer 4 (accuracy: 0.3000)
+    Shuffled:sad: Layer 9 (accuracy: 0.3000)
+    Shuffled:terrified: Layer 19 (accuracy: 0.3000)
+    Shuffled:furious: Layer 1 (accuracy: 0.3000)
+    Shuffled:grateful: Layer 20 (accuracy: 0.2500)
+    Shuffled:hopeful: Layer 14 (accuracy: 0.2500)
+    Shuffled:faithful: Layer 5 (accuracy: 0.3000)
+    Layer 5: 0.6182
+    Layer 5: 0.1636
+
+- Prototype analysis checks if prompts are similar to their own context's average, measuring within-group coherence.
+
+- Probing checks if we can distinguish between different contexts, measuring between-group separation.
+Early: Surface-level features
+Middle: Core emotional semantics
+Late: Complex/nuanced emotional understanding
+
+# Load existing best embeddings and run cosine similarity analysis
+best_embeddings_npz = np.load(BASE_PATH + 'response_embeddings_best_layer.npz', allow_pickle=True)
+best_embeddings = {key: best_embeddings_npz[key] for key in best_embeddings_npz.files}
+
+# Analyze similarity
+results_df = analyze_similarity(best_embeddings)

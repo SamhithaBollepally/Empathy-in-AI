@@ -1,0 +1,80 @@
+Jupytext --to ipynb name.py
+# from google.colab import drive
+# drive.mount('/content/drive')
+
+get access tokens for the models from HuggingFace 
+Check for the dataset - number of columns, rows, data types, variables. 
+
+Empathietic Dailogues Dataset format:
+train.csv
+Rows: 84,188 (excl. header)
+Columns (11): conv_id, utterance_idx, context, prompt, speaker_idx, utterance, selfeval, tags + 3 unnamed/empty trailing columns
+test.csv
+Rows: 10,974 (excl. header)
+Columns (8): conv_id, utterance_idx, context, prompt, speaker_idx, utterance, selfeval, tags
+valid.csv
+Rows: 12,079 (excl. header)
+Columns (8): conv_id, utterance_idx, context, prompt, speaker_idx, utterance, selfeval, tags
+
+=== TRAIN ===
+            num_prompts  num_utterances
+context                                
+afraid              598            2589
+angry               647            2822
+anxious             586            2522
+devastated          522            2273
+lonely              599            2589
+sad                 624            2709
+terrified           583            2553
+furious             558            2482
+grateful            603            2582
+hopeful             578            2478
+faithful            343            1520
+
+=== TEST ===
+            num_prompts  num_utterances
+context                                
+afraid               72             316
+angry                84             351
+anxious              78             330
+devastated           67             287
+lonely               78             330
+sad                  87             374
+terrified            71             298
+furious              67             294
+grateful             95             424
+hopeful              79             338
+faithful             50             220
+
+=== VALID ===
+            num_prompts  num_utterances
+context                                
+afraid               89             395
+angry                84             366
+anxious              82             353
+devastated           76             330
+lonely               94             414
+sad                 101             438
+terrified            81             361
+furious              77             337
+grateful             75             329
+hopeful              81             356
+faithful             50             217
+
+
+afraid	759
+angry	815
+anxious	746
+devastated	665
+lonely	771
+sad	811
+terrified	735
+furious	702
+grateful	773
+hopeful	738
+faithful	443
+
+- extracted 11 contexts, 200 unique prompts per context (Llama-3.2-3B-Instruct/prompts_set1.json)
+- extracted 11 contexts, 200 unique prompts with first utterance per context (Llama-3.2-3B-Instruct/prompts_utterances_set2.json)
+- extracted embeddings for prompts and contexts using Llama-3.2-3B-Instruct
+- extracted embeddings for utterances as well. 

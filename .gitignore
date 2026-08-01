@@ -1,0 +1,16 @@
+# Virtual environment
+EM/
+
+# Dataset
+empatheticdialogues/
+
+# Large embedding files (regenerate by rerunning scripts)
+*.npz
+*.json
+
+# Secrets
+.env
+secrets.env
+
+# macOS
+.DS_Store
