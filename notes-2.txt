@@ -78,3 +78,44 @@ faithful	443
 - extracted 11 contexts, 200 unique prompts with first utterance per context (Llama-3.2-3B-Instruct/prompts_utterances_set2.json)
 - extracted embeddings for prompts and contexts using Llama-3.2-3B-Instruct
 - extracted embeddings for utterances as well. 
+
+- Probing Analysis
+Prompt Embeddings (L1 + L2 classifiers per layer)
+
+Loads prompt_embeddings.npz → X_all shape (2200, num_layers, hidden_dim)
+Trains L1 (Lasso) and L2 (Ridge) logistic regression probes per layer
+Tracks sparsity and top-20 active dimensions at the best layer
+Outputs → l1_vs_l2_probing.png
+Context Embeddings (cosine similarity analysis per layer)
+
+Can't run a classifier with only 11 data points (one prototype per emotion)
+Instead computes pairwise cosine similarity between all 11 emotion vectors per layer
+Finds the layer where emotions are most separated (lowest avg inter-context cosine sim)
+Outputs → context_cosine_heatmap.png, context_separation_per_layer.png
+
+- SCCA 
+Calculated Sparse Canonical Correlation Analysis between prompt and utterance embeddings
+
+- Zeroshot Prompting 
+Extracted responses to utterances from model
+Extracted ratings for emotional expressiveness to its own response and user's response from model
+        "Rate how emotional is the user's situation on a scale of 1 (mild) to 5 (highly emotional).\n\n"
+        "Rate how emotionally expressive this response is on a scale of 1 (mild) to 5 (highly emotional). "
+
+-CoT Prompting 
+Extracted responses to utterances from model
+Extracted ratings for reasoning steps and emotional expressiveness to its own response and user's response from model
+
+- Steering Activation 
+Steered the model to generate responses with specific emotions using activation steering
+This is done for the layers [1, 5, 8, 10, 15, 20, 25, 27, 28]
+The steering is done by adding the congruent emotion vector to the activation of the model
+
+
+       
+
+
+Exp:
+- The model encodes emotion well during input processing (high probe accuracy on prompts) but 
+its generated responses don't live in the same emotion clusters (low probe accuracy on responses).
+- the emission process doesn't access the emotion encoding regardless of how you prompt.
