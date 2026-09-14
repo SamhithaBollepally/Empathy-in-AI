@@ -4,16 +4,15 @@
 
 # %%
 # ============================================================================
-# Probe analysis of steered responses (best-layer readout, mirrors Step-3).
+# Probe analysis of steered responses (best-layer readout) + COHERENCE metric.
 #
-# For every steering config in Outputs/Steering-initial/, embed the generated
-# responses (same masked-mean pooling as Step-3/L3bI-ResponseEmbeddings.py) and
-# predict their emotion with the L1 and L2 probes at their BEST layer only
-# (exactly as Step-3/Analysis.py did): L1 -> best_layer_l1, L2 -> best_layer_l2.
+# Same as probe-analysis.py (L1 @ best_layer_l1, L2 @ best_layer_l2, masked-mean
+# embeddings, target accuracy vs unsteered baseline) but ALSO measures a
+# repetition/degeneration score per response, so a high target accuracy that is
+# really just the model looping emotion words ("grateful grateful grateful") is
+# flagged rather than counted as success.
 #
-# Congruent steering means the TARGET emotion == the emotion the response was
-# grouped under, so "target accuracy" = fraction predicted == that emotion.
-# Compared against the same-utterance UNSTEERED baseline (coeff = 0).
+# Points at the FULL contrastive run: Outputs/SA_full/.
 # ============================================================================
 import os
 import json
@@ -36,21 +35,18 @@ STEP2_PATH = BASE_PATH + 'Step-2/'
 STEP4_PATH = BASE_PATH + 'Step-4/'
 PROBE_PATH = STEP2_PATH + 'emotion_probes.pt'
 
-# --- Raw steering run (Steering-initial) — old input/output paths ---
-# STEER_DIR    = BASE_PATH + 'Outputs/Steering-initial/'
-# OUT_DIR      = STEP4_PATH + 'probe_eval/'          # per-config predictions
-# SUMMARY_PATH = STEP4_PATH + 'steering_probe_eval.json'
-
-# --- Contrastive steering run (SA2) — current input/output paths ---
-STEER_DIR    = BASE_PATH + 'Outputs/SA2/'
-OUT_DIR      = STEP4_PATH + 'probe_eval_SA2/'      # per-config predictions
-SUMMARY_PATH = STEP4_PATH + 'steering_probe_eval_SA2.json'
+# Full contrastive run inputs/outputs.
+STEER_DIR    = BASE_PATH + 'Outputs/SA_full/'
+OUT_DIR      = STEP4_PATH + 'probe_eval_SA_full/'
+SUMMARY_PATH = STEP4_PATH + 'steering_probe_eval_SA_full.json'
 os.makedirs(OUT_DIR, exist_ok=True)
 
 NULL_LABEL = 'Null'
 BATCH_SIZE = 8
 MAX_LENGTH = 512
-BASELINE_N_PER_EMOTION = 20   # unsteered baseline over the same first-N utterances
+BASELINE_N_PER_EMOTION = None   # None -> full 200/emotion (match the full steered run)
+REP_N = 3                       # n-gram size for the repetition score
+DEGENERATE_THRESHOLD = 0.3      # repetition >= this counts as degenerate
 
 # %%
 token = getpass.getpass("Enter your Hugging Face token: ")
@@ -85,10 +81,7 @@ print(f"Model loaded on {MODEL_DEVICE} ({next(model.parameters()).dtype}).")
 # %%
 # ---- Probe inference helpers (inlined from the former probe_utils.py) --------
 def load_probe(bundle, device, penalty):
-    """Return (probe: nn.Linear, scaler, classes, layer) for 'l1' or 'l2'.
-
-    Uses the bundle's best layer for that penalty (matches Step-3 layer=None).
-    """
+    """Return (probe: nn.Linear, scaler, classes, layer) for 'l1' or 'l2'."""
     layer = bundle[f'best_layer_{penalty}']
     entry = bundle['layers'][layer]
     probe = nn.Linear(bundle['hidden_dim'], len(bundle['classes'])).to(device)
@@ -98,7 +91,6 @@ def load_probe(bundle, device, penalty):
 
 
 def predict_labels(emb, probe, scaler, classes):
-    """Predicted emotion labels for embeddings (n, hidden_dim)."""
     X = scaler.transform(np.asarray(emb, dtype=np.float32))
     X = torch.tensor(X, dtype=torch.float32, device=device)
     with torch.no_grad():
@@ -106,8 +98,22 @@ def predict_labels(emb, probe, scaler, classes):
     return np.array([classes[i] for i in idx])
 
 # %%
+def repetition_score(text, n=REP_N):
+    """Fraction of repeated word n-grams: 0 = all unique, ->1 = heavy looping.
+
+    Degenerate steering ("grateful grateful grateful") scores high; normal text low.
+    Falls back to smaller n for very short responses.
+    """
+    toks = text.split()
+    while n > 1 and len(toks) < n + 1:
+        n -= 1
+    if len(toks) < n + 1:
+        return 0.0
+    ngrams = [tuple(toks[i:i + n]) for i in range(len(toks) - n + 1)]
+    return 1.0 - len(set(ngrams)) / len(ngrams)
+
+# %%
 def masked_mean_pool(hidden_state, attention_mask):
-    """Mean-pool token embeddings using the attention mask (ignores padding)."""
     mask = attention_mask.unsqueeze(-1).to(hidden_state.dtype)
     summed = (hidden_state * mask).sum(dim=1)
     counts = mask.sum(dim=1).clamp(min=1)
@@ -121,10 +127,7 @@ class _StopForward(Exception):
 def embed_texts(texts, layers):
     """Embed texts -> {layer: np.ndarray(n, hidden_dim)} (masked mean pool).
 
-    Speed: we only need a few readout layers, so we capture their raw block
-    outputs via hooks and early-stop after the deepest one — skipping the upper
-    decoder layers AND the large lm_head. Runs on the base model (model.model),
-    so no vocab projection is computed. Captured tensors equal hidden_states[L].
+    Early-stops after the deepest needed layer and skips lm_head (runs model.model).
     """
     stop_layer = max(layers)
     captured = {}
@@ -146,7 +149,7 @@ def embed_texts(texts, layers):
             captured.clear()
             with torch.inference_mode():
                 try:
-                    model.model(**inputs)          # base model only (no lm_head)
+                    model.model(**inputs)
                 except _StopForward:
                     pass
             attn = inputs['attention_mask']
@@ -162,7 +165,6 @@ def embed_texts(texts, layers):
     return {L: np.concatenate(v, axis=0) for L, v in out.items()}
 
 # %%
-# Load the L1 and L2 probes at their best layer only (mirrors Step-3).
 bundle = torch.load(PROBE_PATH, map_location=device, weights_only=False)
 probe_l1, scaler_l1, classes, layer_l1 = load_probe(bundle, device, 'l1')
 probe_l2, scaler_l2, _,       layer_l2 = load_probe(bundle, device, 'l2')
@@ -171,20 +173,17 @@ print(f"L1 probe @ layer {layer_l1} | L2 probe @ layer {layer_l2}")
 
 # %%
 def evaluate_group(data):
-    """data: {emotion: [ {response, ...} ]}. Congruent target == emotion key.
-
-    Predicts with L1 (layer_l1) and L2 (layer_l2). Empty responses -> NULL_LABEL,
-    excluded from accuracy. Returns (records_by_emotion, metrics).
-    """
+    """Predict L1/L2 emotion + repetition per response. Congruent target == emotion key."""
     records = {e: [] for e in data}
-    texts, refs = [], []   # refs: (emotion, position)
+    texts, refs = [], []
     n_null = 0
     for emotion, items in data.items():
         for idx, it in enumerate(items):
             text = (it.get('response', '') or '').strip()
-            rec = {'index': idx, 'true_emotion': emotion,
-                   'pred_l1': NULL_LABEL, 'pred_l2': NULL_LABEL}
+            rec = {'index': idx, 'true_emotion': emotion, 'pred_l1': NULL_LABEL,
+                   'pred_l2': NULL_LABEL, 'repetition': None}
             if text:
+                rec['repetition'] = round(repetition_score(text), 4)
                 refs.append((emotion, len(records[emotion])))
                 texts.append(text)
             else:
@@ -203,25 +202,34 @@ def evaluate_group(data):
     pred = [r for r in flat if r['pred_l2'] != NULL_LABEL]
     def acc(k):
         return round(float(np.mean([r[k] == r['true_emotion'] for r in pred])), 4) if pred else None
+    reps = [r['repetition'] for r in pred if r['repetition'] is not None]
+    mean_rep = round(float(np.mean(reps)), 4) if reps else None
+    degen = round(float(np.mean([r >= DEGENERATE_THRESHOLD for r in reps])), 4) if reps else None
+    # "Clean" accuracy: only over coherent (non-degenerate) responses.
+    clean = [r for r in pred if (r['repetition'] or 0) < DEGENERATE_THRESHOLD]
+    clean_acc_l2 = round(float(np.mean([r['pred_l2'] == r['true_emotion'] for r in clean])), 4) if clean else None
     metrics = {'n_total': len(flat), 'n_predicted': len(pred), 'n_null': n_null,
                'l1_layer': int(layer_l1), 'l2_layer': int(layer_l2),
-               'target_acc_l1': acc('pred_l1'), 'target_acc_l2': acc('pred_l2')}
+               'target_acc_l1': acc('pred_l1'), 'target_acc_l2': acc('pred_l2'),
+               'mean_repetition': mean_rep, 'degenerate_frac': degen,
+               'clean_acc_l2': clean_acc_l2, 'n_clean': len(clean)}
     return records, metrics
 
 # %%
-# ---- Baseline: same first-N unsteered utterances (coeff = 0) -----------------
+# ---- Baseline: unsteered utterances (coeff = 0), matched N -------------------
 summary = []
 with open(BASE_PATH + 'Outputs/zeroshot_responses.json') as f:
     zs = json.load(f)
-baseline_data = {e: zs[e][:BASELINE_N_PER_EMOTION] for e in EMOTIONS}
-print(f"\n=== BASELINE (unsteered, first {BASELINE_N_PER_EMOTION}/emotion) ===")
+baseline_data = {e: (zs[e] if BASELINE_N_PER_EMOTION is None else zs[e][:BASELINE_N_PER_EMOTION])
+                 for e in EMOTIONS}
+print("\n=== BASELINE (unsteered) ===")
 base_records, base_metrics = evaluate_group(baseline_data)
 with open(OUT_DIR + 'baseline_predictions.json', 'w') as f:
     json.dump({'metrics': base_metrics, 'predictions': base_records}, f, indent=2)
 summary.append({'output_file': 'baseline', 'layer_steered': None, 'coeff': 0.0, **base_metrics})
-print(f"  L1 target_acc={base_metrics['target_acc_l1']} | "
-      f"L2 target_acc={base_metrics['target_acc_l2']}")
 BASE_L1, BASE_L2 = base_metrics['target_acc_l1'], base_metrics['target_acc_l2']
+print(f"  L1={BASE_L1} | L2={BASE_L2} | mean_rep={base_metrics['mean_repetition']} "
+      f"| degenerate={base_metrics['degenerate_frac']}")
 
 # %%
 # ---- Every steered config ----------------------------------------------------
@@ -244,20 +252,23 @@ for path in files:
                     'coeff': coeff, **metrics})
     with open(SUMMARY_PATH, 'w') as f:
         json.dump(summary, f, indent=2)
-    print(f"  L1 target_acc={metrics['target_acc_l1']} | "
-          f"L2 target_acc={metrics['target_acc_l2']} | null={metrics['n_null']}")
+    print(f"  L2={metrics['target_acc_l2']} | clean_L2={metrics['clean_acc_l2']} "
+          f"| mean_rep={metrics['mean_repetition']} | degenerate={metrics['degenerate_frac']} "
+          f"| null={metrics['n_null']}")
 
 # %%
-# ---- Report: top configs by L2 target accuracy vs baseline -------------------
-print(f"\nBaseline: L1@{layer_l1}={BASE_L1}  L2@{layer_l2}={BASE_L2}")
-print("\nTop steered configs by L2 target accuracy:")
+# ---- Report: rank by CLEAN L2 accuracy (accuracy on coherent responses) ------
+print(f"\nBaseline: L1@{layer_l1}={BASE_L1}  L2@{layer_l2}={BASE_L2}  "
+      f"(rep={base_metrics['mean_repetition']})")
+print("\nConfigs by clean L2 accuracy (coherent responses only):")
 rows = [r for r in summary if r['output_file'] != 'baseline']
-for r in sorted(rows, key=lambda r: (r['target_acc_l2'] or 0), reverse=True)[:12]:
-    d1 = (r['target_acc_l1'] - BASE_L1) if (r['target_acc_l1'] is not None and BASE_L1 is not None) else None
-    d2 = (r['target_acc_l2'] - BASE_L2) if (r['target_acc_l2'] is not None and BASE_L2 is not None) else None
-    d1t = f"{d1:+.3f}" if d1 is not None else "n/a"
-    d2t = f"{d2:+.3f}" if d2 is not None else "n/a"
-    print(f"  steer L{r['layer_steered']:>2} c{r['coeff']:<4} | "
-          f"L1={r['target_acc_l1']} (Δ{d1t}) | L2={r['target_acc_l2']} (Δ{d2t})")
+hdr = f"  {'layer':>5} {'coeff':>5} | {'L2':>6} {'cleanL2':>7} {'rep':>6} {'degen%':>7} {'Δclean':>7}"
+print(hdr)
+for r in sorted(rows, key=lambda r: (r['clean_acc_l2'] or 0), reverse=True):
+    d = (r['clean_acc_l2'] - BASE_L2) if (r['clean_acc_l2'] is not None and BASE_L2 is not None) else None
+    dt = f"{d:+.3f}" if d is not None else "  n/a"
+    print(f"  {str(r['layer_steered']):>5} {str(r['coeff']):>5} | "
+          f"{r['target_acc_l2']:>6} {r['clean_acc_l2']:>7} {r['mean_repetition']:>6} "
+          f"{r['degenerate_frac']:>7} {dt:>7}")
 
 print(f"\nDone. Summary: {SUMMARY_PATH}")
