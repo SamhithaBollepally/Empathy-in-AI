@@ -119,3 +119,66 @@ Exp:
 - The model encodes emotion well during input processing (high probe accuracy on prompts) but 
 its generated responses don't live in the same emotion clusters (low probe accuracy on responses).
 - the emission process doesn't access the emotion encoding regardless of how you prompt.
+
+
+Updates:
+No. of emotions = 10 (excluded faithful)
+Set 1: 400 prompts per emotion
+Set 2: 200 prompts with first utterance per emotion
+_comma_ -> ,
+Set 1 prompts containing their own emotion word:
+  afraid        31 / 400  (7.8%)
+  angry         18 / 400  (4.5%)
+  anxious       15 / 400  (3.8%)
+  devastated    14 / 400  (3.5%)
+  lonely        32 / 400  (8.0%)
+  sad           37 / 400  (9.2%)
+  terrified     10 / 400  (2.5%)
+  furious       10 / 400  (2.5%)
+  grateful      30 / 400  (7.5%)
+  hopeful       24 / 400  (6.0%)
+Unique prompts available per emotion:
+context
+        afraid        757
+        angry         815
+        anxious       745
+        devastated    665
+        lonely        771
+        sad           810
+        terrified     732
+        furious       702
+        grateful      773
+        hopeful       738
+
+── Emotion weight norms per layer (top emotion) ──
+ Layer   Top emotion      Norm   Min norm   Max norm    Variance
+     0       furious    0.7620     0.6864     0.7620    0.000417
+     1       furious    0.7545     0.6628     0.7545    0.000926
+     2        lonely    0.2712     0.2346     0.2712    0.000154
+     3        lonely    0.2694     0.2326     0.2694    0.000148
+     4      grateful    0.2636     0.2274     0.2636    0.000118
+     5      grateful    0.2617     0.2245     0.2617    0.000133
+     6      grateful    0.2635     0.2251     0.2635    0.000129
+     7      grateful    0.2624     0.2242     0.2624    0.000131
+     8       furious    0.6884     0.5381     0.6884    0.002633
+     9      grateful    0.2584     0.2223     0.2584    0.000123
+    10      grateful    0.2572     0.2244     0.2572    0.000107
+    11      grateful    0.2574     0.2261     0.2574    0.000098
+    12      grateful    0.2515     0.2222     0.2515    0.000087
+    13      grateful    0.2507     0.2209     0.2507    0.000088
+    14      grateful    0.2544     0.2226     0.2544    0.000103
+    15      grateful    0.2539     0.2225     0.2539    0.000102
+    16      grateful    0.2556     0.2209     0.2556    0.000116
+    17      grateful    0.2561     0.2207     0.2561    0.000122
+    18      grateful    0.2553     0.2217     0.2553    0.000113
+    19      grateful    0.2557     0.2211     0.2557    0.000113
+    20      grateful    0.2563     0.2206     0.2563    0.000130
+    21      grateful    0.2575     0.2206     0.2575    0.000135
+    22      grateful    0.2584     0.2225     0.2584    0.000136
+    23      grateful    0.2580     0.2215     0.2580    0.000140
+    24      grateful    0.2592     0.2221     0.2592    0.000146
+    25      grateful    0.2600     0.2240     0.2600    0.000143
+    26      grateful    0.2597     0.2224     0.2597    0.000156
+    27      grateful    0.2604     0.2234     0.2604    0.000156
+    28     terrified    0.6934     0.5649     0.6934    0.001700
+

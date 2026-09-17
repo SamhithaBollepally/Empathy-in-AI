@@ -15,3 +15,4 @@
 - Code should be versioned
 - when the file path is updated, update all references to it and delete the old path files. 
 - 'torch_dtype' is deprecated! Use 'dtype' instead!
+- Do not run code after making changes unless the user explicitly asks. Make the requested changes and leave execution to the user.
